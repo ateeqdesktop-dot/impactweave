@@ -1,0 +1,35 @@
+strict: true
+contracts:
+  - name: orders.created
+    version: "1"
+    kind: event-json
+    fields:
+      - {path: /id, type: string, required: true}
+      - {path: /status, type: string, required: true, enum: [pending, paid, cancelled]}
+      - {path: /total, type: number, required: true, minimum: 0}
+proposed:
+  - name: orders.created
+    version: "2"
+    kind: event-json
+    fields:
+      - {path: /id, type: string, required: true}
+      - {path: /status, type: string, required: true, enum: [paid, cancelled]}
+      - {path: /total, type: number, required: true, minimum: 10}
+      - {path: /currency, type: string, required: true}
+edges:
+  - {producer: checkout, consumer: billing, contract: orders.created}
+  - {producer: checkout, consumer: analytics, contract: orders.created}
+  - {producer: checkout, consumer: fraud, contract: orders.created}
+evidence:
+  - producer: checkout
+    consumer: billing
+    contract: orders.created
+    confidence: 0.98
+    source: ci-trace
+    observed_at: "2026-08-20T12:00:00Z"
+  - producer: checkout
+    consumer: analytics
+    contract: orders.created
+    confidence: 0.82
+    source: otel-export
+    observed_at: "2026-08-20T12:00:00Z"
