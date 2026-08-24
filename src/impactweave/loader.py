@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from .models import ContractSnapshot, Edge, Evidence
+from .models import ContractSnapshot, Edge, Evidence, GraphEdge, GraphNode
 
 MAX_BYTES = 2_000_000
 MAX_JSONL_LINE = 256_000
@@ -19,7 +19,21 @@ class ProjectManifest(BaseModel):
     proposed: list[ContractSnapshot] = Field(default_factory=list, max_length=512)
     edges: list[Edge] = Field(default_factory=list, max_length=4096)
     evidence: list[Evidence] = Field(default_factory=list, max_length=100_000)
+    nodes: list[GraphNode] = Field(default_factory=list, max_length=8192)
+    graph_edges: list[GraphEdge] = Field(default_factory=list, max_length=16384)
     strict: bool = True
+    max_hops: int = Field(default=8, ge=1, le=32)
+    stale_after_days: int = Field(default=30, ge=1, le=3650)
+
+    @model_validator(mode="after")
+    def validate_graph_references(self) -> ProjectManifest:
+        node_ids = {node.id for node in self.nodes}
+        missing = sorted(
+            {item for edge in self.graph_edges for item in (edge.source, edge.target) if item not in node_ids}
+        )
+        if missing:
+            raise ValueError(f"graph edges reference unknown nodes: {', '.join(missing)}")
+        return self
 
     @property
     def contract_map(self) -> dict[str, ContractSnapshot]:

@@ -28,6 +28,12 @@ jobs:
         run: mypy src
       - name: Tests
         run: pytest
+      - name: Nexus fixture
+        if: matrix.python-version == '3.12'
+        run: |
+          impactweave validate fixtures/nexus.yaml
+          impactweave nexus fixtures/nexus.yaml --format sarif --output impactweave.sarif || test $? -eq 1
+          test -s impactweave.sarif
       - name: Build
         if: matrix.python-version == '3.12'
         run: python -m build

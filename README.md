@@ -1,47 +1,85 @@
-# ImpactWeave
+# ImpactWeave Nexus
 
-> Rehearse the blast radius of API, event, and database contract changes before merge.
+> **Know what your agent change can break before production teaches you.**
 
-ImpactWeave is a local-first Python CLI and library for **evidence-backed change-impact rehearsal**. It compares a current contract with a proposed version, resolves declared producer/consumer relationships, attaches observed evidence, and produces a deterministic report that can gate CI.
+[![CI](https://github.com/ateeqdesktop-dot/impactweave/actions/workflows/ci.yml/badge.svg)](https://github.com/ateeqdesktop-dot/impactweave/actions/workflows/ci.yml) [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-ImpactWeave is intentionally not another schema registry, data catalog, runtime proxy, or LLM governance dashboard. It focuses on one high-leverage question:
+ImpactWeave Nexus is a **local-first, deterministic change-impact decision engine for AI-enabled distributed systems**. It turns a contract or repository change into an explainable impact graph, attaches the evidence available for each boundary, and emits a stable artifact that humans and CI can review.
 
-> If this contract changes, which consumers can break, how confident are we in that relationship, and should the pull request pass?
+It answers a question that ordinary schema validators, observability dashboards, and runtime policy engines answer only partially:
 
-## Why it matters
+> **Which agent, tool, data, or service boundary can change because of this diff, what evidence supports that conclusion, and where must a human review uncertainty?**
 
-Contract validators usually report structural compatibility. Lineage systems describe relationships at platform scale. ImpactWeave sits between those layers as a small repository-native rehearsal tool: it turns contract diffs into consumer-specific findings and treats missing evidence as **reviewable uncertainty** instead of silently assuming safety.
+## Why this project exists
 
-## Quick start
+AI-enabled systems are connected by more than imports. A small event or API change can alter a tool contract, a retrieval path, a policy boundary, an agent fixture, or a downstream worker. ImpactWeave Nexus makes those relationships explicit without pretending that an impact score is proof of safety.
+
+The core is intentionally offline and framework-neutral. It does not call an LLM, execute repository code, contact a hosted service, or require a database. Every finding includes a severity, coverage state, confidence when evidence is fresh, and a graph path that a reviewer can inspect.
+
+ImpactWeave Nexus is **not** another observability backend, evaluator, runtime governance engine, sandbox, schema registry, generic dependency graph, or hosted control plane. Observability tells you what happened. Runtime governance controls what may happen. Replay tools protect known failures. Nexus helps decide what deserves attention **before merge**.
+
+## Quickstart
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 
-impactweave validate fixtures/demo.yaml
-impactweave plan fixtures/demo.yaml --format markdown
-impactweave plan fixtures/demo.yaml --format json --output impact.json
+# Validate without producing an impact decision
+impactweave validate fixtures/nexus.yaml
+
+# Produce a human-readable report; this fixture intentionally returns exit 1
+impactweave nexus fixtures/nexus.yaml --format markdown --output impact.md
+
+# Produce stable machine output for snapshots and artifacts
+impactweave nexus fixtures/nexus.yaml --format json --output impact.json
+
+# Produce SARIF for GitHub Code Scanning-compatible ingestion
+impactweave nexus fixtures/nexus.yaml --format sarif --output impact.sarif
 ```
 
-The demo intentionally exits with status `1` in strict mode because the proposed event removes an enum value, tightens a numeric bound, adds a required field, and has no evidence for every relationship. That is the product behavior: uncertainty is visible before production.
+The legacy `plan` command remains supported, so existing ImpactWeave users can adopt Nexus incrementally.
 
-## Manifest shape
+## What the engine produces
+
+| Output | Purpose |
+|---|---|
+| Explainable graph paths | Shows the producer → contract → consumer route used by a finding. |
+| Evidence coverage | Distinguishes `observed`, `declared`, `stale`, and `unknown`; missing evidence is reviewable uncertainty. |
+| Impact score | Provides a bounded triage signal, never a claim of safety. |
+| Stable artifact digest | Identifies the canonical report while redacting generation time for reproducible CI snapshots. |
+| Markdown | Gives reviewers a compact contract and consumer-impact table. |
+| JSON | Supports automation, snapshots, and downstream integrations. |
+| SARIF | Surfaces breaking findings in GitHub security and code-scanning workflows. |
+
+## Manifest example
 
 ```yaml
 strict: true
+max_hops: 6
+stale_after_days: 30
 contracts:
   - name: orders.created
     version: "1"
     kind: event-json
     fields:
       - {path: /id, type: string, required: true}
+      - {path: /total, type: number, required: true}
 proposed:
   - name: orders.created
     version: "2"
     kind: event-json
     fields:
       - {path: /id, type: string, required: true}
+      - {path: /total, type: integer, required: true}
+      - {path: /currency, type: string, required: true}
+nodes:
+  - {id: checkout, kind: component}
+  - {id: contract:orders.created, kind: contract}
+  - {id: billing, kind: component}
+graph_edges:
+  - {source: checkout, target: contract:orders.created, kind: produces}
+  - {source: contract:orders.created, target: billing, kind: consumes}
 edges:
   - {producer: checkout, consumer: billing, contract: orders.created}
 evidence:
@@ -49,45 +87,60 @@ evidence:
     consumer: billing
     contract: orders.created
     confidence: 0.98
-    source: ci-trace
-    observed_at: "2026-08-20T12:00:00Z"
+    source: contract-test
+    observed_at: "2026-08-22T12:00:00Z"
 ```
+
+Graph nodes support `component`, `contract`, `tool`, `policy`, `dataset`, `deployment`, and `fixture`. Graph edges support `produces`, `consumes`, `calls`, `retrieves`, `governed_by`, `deploys`, and `derives`. The older `edges` and `evidence` fields are retained for a low-friction migration path.
+
+## GitHub Actions
+
+```yaml
+name: impactweave
+on: [pull_request]
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install .
+      - name: Analyze change impact
+        run: impactweave nexus fixtures/nexus.yaml --format sarif --output impactweave.sarif
+      - name: Upload impact findings
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: impactweave.sarif
+```
+
+Pin released versions rather than a moving branch in production workflows. A future official composite action will be added only after the manifest and artifact contracts stabilize.
 
 ## Architecture
 
-The core is composed of a validated canonical model, a pure contract diff engine, an adjacency-map evidence graph, an impact propagator, a policy evaluator, and deterministic JSON/Markdown reporters. There is no database, broker, network request, or model API in the MVP. See [`docs/product-and-architecture.md`](docs/product-and-architecture.md).
+The engine is a small, pure pipeline: validated canonical models feed the contract diff engine and a typed adjacency graph; sorted bounded traversal resolves paths; evidence coverage and policy rules produce findings; deterministic reporters emit JSON, Markdown, or SARIF. See [`docs/nexus-architecture.md`](docs/nexus-architecture.md).
 
-## CI usage
-
-```yaml
-- name: Rehearse contract impact
-  run: |
-    pip install .
-    impactweave plan contracts/project.yaml --format json --output impact.json
-```
-
-A `pass` exits with `0`; `fail` and `review` exit with `1`. The JSON report is stable for snapshot tests because the generated timestamp is redacted from serialized output.
-
-## Quality
+## Development
 
 ```bash
+pytest
 ruff check .
 mypy src
-autopep8 --version  # optional local tool
-pytest
 python -m build
 ```
 
-The project targets Python 3.10+ and keeps the deterministic core independent of external services. The test suite covers contract semantics, strict/permissive policies, evidence gaps, validation, and report generation.
+The project targets Python 3.10+. Tests cover contract semantics, strict and permissive decisions, timezone validation, graph references, graph paths, stale evidence, deterministic digests, CLI behavior, and SARIF serialization. The core does not execute target repository code and uses safe YAML loading with input limits.
 
-## Roadmap
+## Product roadmap
 
-The next increments are OpenAPI and AsyncAPI importers, SQL migration parsing, SARIF annotations, evidence expiry policies, GitHub PR summaries, and adapters for protobuf/Avro. A hosted control plane is not part of the near-term roadmap.
+The MVP in this repository covers the canonical model, contract impact engine, typed graph paths, coverage states, deterministic artifact identity, Markdown/JSON/SARIF reporters, CLI, fixtures, and CI-quality gates. The next extensions are read-only OpenAPI, AsyncAPI, JSON Schema, SQL migration, TraceForge, Runproof, and OTel adapters. A hosted control plane is intentionally deferred until local artifacts and community workflows prove stable.
 
-## Security
+## Contributing and security
 
-Read [`SECURITY.md`](SECURITY.md). ImpactWeave does not execute contract content, follow remote URLs, or claim to prove runtime safety. It is an analysis and CI decision tool.
+Contributions should add a focused fixture and a regression test for every new semantic rule. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md), and [`SECURITY.md`](SECURITY.md). Security reports should not be opened as public issues.
 
 ## License
 
-Apache-2.0. See [`LICENSE`](LICENSE).
+ImpactWeave Nexus is released under the [Apache License 2.0](LICENSE).

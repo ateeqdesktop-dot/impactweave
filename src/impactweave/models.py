@@ -63,6 +63,41 @@ class Edge(BaseModel):
     declared: bool = True
 
 
+class NodeKind(str, Enum):
+    COMPONENT = "component"
+    CONTRACT = "contract"
+    TOOL = "tool"
+    POLICY = "policy"
+    DATASET = "dataset"
+    DEPLOYMENT = "deployment"
+    FIXTURE = "fixture"
+
+
+class GraphNode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.:/@-]+$")
+    kind: NodeKind
+    label: str | None = Field(default=None, max_length=200)
+
+
+class EdgeKind(str, Enum):
+    PRODUCES = "produces"
+    CONSUMES = "consumes"
+    CALLS = "calls"
+    RETRIEVES = "retrieves"
+    GOVERNED_BY = "governed_by"
+    DEPLOYS = "deploys"
+    DERIVES = "derives"
+
+
+class GraphEdge(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: str = Field(min_length=1, max_length=160)
+    target: str = Field(min_length=1, max_length=160)
+    kind: EdgeKind
+    declared: bool = True
+
+
 class Evidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
     producer: str = Field(min_length=1, max_length=128)
@@ -103,6 +138,13 @@ class ContractChange(BaseModel):
     after: Any = None
 
 
+class CoverageState(str, Enum):
+    OBSERVED = "observed"
+    DECLARED = "declared"
+    STALE = "stale"
+    UNKNOWN = "unknown"
+
+
 class ImpactFinding(BaseModel):
     consumer: str
     producer: str
@@ -112,6 +154,9 @@ class ImpactFinding(BaseModel):
     reason: str
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     evidence_source: str | None = None
+    coverage: CoverageState = CoverageState.UNKNOWN
+    impact_score: int = Field(default=0, ge=0, le=100)
+    graph_path: list[str] = Field(default_factory=list, max_length=32)
 
 
 class Verdict(str, Enum):
@@ -123,13 +168,14 @@ class Verdict(str, Enum):
 
 class ImpactReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    schema_version: str = "1"
+    schema_version: str = "2"
     generated_at: datetime
     verdict: Verdict
     changes: list[ContractChange]
     findings: list[ImpactFinding]
     unknown_edges: list[str] = Field(default_factory=list)
     summary: dict[str, int]
+    artifact_digest: str = ""
 
     @field_validator("generated_at")
     @classmethod

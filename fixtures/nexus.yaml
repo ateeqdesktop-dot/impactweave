@@ -1,0 +1,43 @@
+strict: true
+max_hops: 6
+stale_after_days: 30
+contracts:
+  - name: orders.created
+    version: "1"
+    kind: event-json
+    fields:
+      - {path: /id, type: string, required: true}
+      - {path: /total, type: number, required: true}
+proposed:
+  - name: orders.created
+    version: "2"
+    kind: event-json
+    fields:
+      - {path: /id, type: string, required: true}
+      - {path: /total, type: integer, required: true}
+      - {path: /currency, type: string, required: true}
+nodes:
+  - {id: checkout, kind: component, label: Checkout API}
+  - {id: contract:orders.created, kind: contract, label: Orders event}
+  - {id: billing, kind: component, label: Billing worker}
+  - {id: fraud, kind: component, label: Fraud worker}
+graph_edges:
+  - {source: checkout, target: contract:orders.created, kind: produces}
+  - {source: contract:orders.created, target: billing, kind: consumes}
+  - {source: contract:orders.created, target: fraud, kind: consumes}
+edges:
+  - {producer: checkout, consumer: billing, contract: orders.created}
+  - {producer: checkout, consumer: fraud, contract: orders.created}
+evidence:
+  - producer: checkout
+    consumer: billing
+    contract: orders.created
+    confidence: 0.98
+    source: otel-fixture
+    observed_at: "2026-08-20T12:00:00Z"
+  - producer: checkout
+    consumer: fraud
+    contract: orders.created
+    confidence: 0.91
+    source: contract-test
+    observed_at: "2026-08-22T12:00:00Z"

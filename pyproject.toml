@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "impactweave"
-version = "0.1.0"
-description = "Deterministic change-impact rehearsal for distributed-system contracts"
+version = "0.2.0"
+description = "Explainable, deterministic change-impact decisions for AI-enabled systems"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
