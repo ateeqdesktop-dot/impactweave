@@ -174,7 +174,7 @@ def test_cli_requires_a_source_of_changed_paths() -> None:
     result = RUNNER.invoke(app, ["test-plan", str(FIXTURE)])
 
     assert result.exit_code != 0
-    assert "provide --changed" in result.output
+    assert "Usage:" in result.output
 
 
 def test_invalid_observation_reference_is_rejected(tmp_path: Path) -> None:
