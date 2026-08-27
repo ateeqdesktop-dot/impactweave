@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from .models import ImpactReport
+from .models import ImpactReport, TestPlanReport
 
 
 def to_json(report: ImpactReport) -> str:
@@ -74,6 +74,68 @@ def to_sarif(report: ImpactReport) -> str:
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "runs": [
             {"tool": {"driver": {"name": "ImpactWeave Nexus", "version": report.schema_version}}, "results": results}
+        ],
+    }
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def to_test_plan_json(report: TestPlanReport) -> str:
+    return json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+
+
+def to_test_plan_markdown(report: TestPlanReport) -> str:
+    lines = [
+        f"# ImpactWeave test plan: `{report.verdict.value}`",
+        "",
+        f"> Artifact digest: `{report.artifact_digest}`",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Value |",
+        "|---|---:|",
+    ]
+    lines.extend(f"| {_cell(key)} | {_cell(value)} |" for key, value in sorted(report.summary.items()))
+    lines.extend(["", "## Changed paths", ""])
+    if report.changed_paths:
+        lines.extend(f"- `{_cell(path)}`" for path in report.changed_paths)
+    else:
+        lines.append("- No changed paths supplied.")
+    lines.extend(
+        ["", "## Decisions", "", "| Test | Selected | Reason | Matched paths | Command |", "|---|---:|---|---|---|"]
+    )
+    for decision in report.decisions:
+        selected = "**yes**" if decision.selected else "no"
+        matched = ", ".join(f"`{_cell(item)}`" for item in decision.matched_paths) or "—"
+        command = " ".join(f"`{_cell(item)}`" for item in decision.command)
+        lines.append(f"| `{_cell(decision.test_id)}` | {selected} | {_cell(decision.reason)} | {matched} | {command} |")
+    if report.fallback_reasons:
+        lines.extend(["", "## Safety notes", ""])
+        lines.extend(f"- {_cell(reason)}" for reason in report.fallback_reasons)
+    return "\n".join(lines) + "\n"
+
+
+def to_test_plan_sarif(report: TestPlanReport) -> str:
+    results = [
+        {
+            "ruleId": "impactweave/unmapped-path",
+            "level": "warning",
+            "message": {"text": f"No test ownership mapping covers changed path: {path}"},
+            "locations": [{"physicalLocation": {"artifactLocation": {"uri": path}}}],
+        }
+        for path in report.unknown_paths
+    ]
+    results.extend(
+        {"ruleId": "impactweave/full-suite-fallback", "level": "note", "message": {"text": reason}}
+        for reason in report.fallback_reasons
+    )
+    payload = {
+        "version": "2.1.0",
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "runs": [
+            {
+                "tool": {"driver": {"name": "ImpactWeave Test Planner", "version": report.schema_version}},
+                "results": results,
+            }
         ],
     }
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"

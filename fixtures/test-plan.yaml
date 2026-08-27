@@ -1,0 +1,57 @@
+contracts:
+  - name: checkout.events
+    version: "1"
+    kind: event-json
+    fields:
+      - {path: /order_id, type: string, required: true}
+proposed: []
+edges: []
+evidence: []
+nodes: []
+graph_edges: []
+strict: true
+max_hops: 8
+stale_after_days: 30
+tests:
+  - id: unit.checkout
+    command: [pytest, tests/checkout, -q]
+    paths: [src/checkout/**, tests/checkout/**]
+    tags: [unit, fast]
+    estimated_seconds: 45
+  - id: unit.billing
+    command: [pytest, tests/billing, -q]
+    paths: [src/billing/**, tests/billing/**]
+    tags: [unit, fast]
+    estimated_seconds: 50
+  - id: contract.api
+    command: [pytest, tests/contracts, -q]
+    paths: [contracts/**, schemas/**, src/api/**]
+    tags: [contract]
+    estimated_seconds: 80
+  - id: e2e.critical
+    command: [pytest, tests/e2e, -q]
+    paths: [web/**, src/checkout/**, src/billing/**]
+    tags: [e2e, critical]
+    estimated_seconds: 180
+  - id: lint
+    command: [ruff, check, .]
+    tags: [quality]
+    always: true
+    estimated_seconds: 20
+
+test_observations:
+  - test_id: unit.checkout
+    paths: [src/checkout/**]
+    source: coverage.py
+    observed_at: "2026-08-26T12:00:00Z"
+  - test_id: unit.billing
+    paths: [src/billing/**]
+    source: coverage.py
+    observed_at: "2026-08-26T12:00:00Z"
+
+test_policy:
+  tracked_paths: [pyproject.toml, uv.lock, poetry.lock, package-lock.json, .github/workflows/**]
+  ignored_paths: [docs/**, "**/*.md"]
+  fallback_on_unknown: true
+  max_selected: 3
+  stale_after_days: 30

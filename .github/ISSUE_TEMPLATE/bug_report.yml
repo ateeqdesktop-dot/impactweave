@@ -1,0 +1,43 @@
+name: Bug report
+description: Report an incorrect plan, unsafe fallback, or reproducible CLI failure.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please remove secrets, customer data, and private repository paths before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: ImpactWeave version
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include a minimal manifest, changed paths, command, and observed output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets and sensitive repository data.
+          required: true
+        - label: I ran the command without executing test commands through ImpactWeave.
+          required: true

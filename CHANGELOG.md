@@ -1,6 +1,26 @@
 # Changelog
 
-All notable changes to ImpactWeave Nexus are documented here.
+All notable changes to ImpactWeave are documented here.
+
+## [0.3.0] — 2026-08-27
+
+### Added
+
+- Deterministic `test-plan` CLI for explicit changed paths or a Git `base...head` diff.
+- Declarative test targets with argv arrays, ownership globs, tags, estimates, and always-run semantics.
+- Conservative `safe_subset`, `full_suite`, and `review` verdicts with tracked-path and unmapped-path fallback.
+- Optional fresh test observations without persisting test output or environment values.
+- JSON, Markdown, and SARIF 2.1.0 test-plan reports with stable artifact digests.
+- Temporary Git integration tests, policy fixtures, architecture documentation, and pull-request workflow.
+
+### Security
+
+- Reject absolute paths, NUL bytes, traversal, and option-like Git refs.
+- Read Git names only through argv-based `git diff --name-only`; never execute declared test commands.
+
+### Compatibility
+
+Existing Nexus manifests and commands remain supported. The new `tests`, `test_observations`, and `test_policy` fields are optional.
 
 ## [0.2.0] — 2026-08-24
 

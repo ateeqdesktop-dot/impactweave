@@ -1,146 +1,163 @@
-# ImpactWeave Nexus
+# ImpactWeave
 
-> **Know what your agent change can break before production teaches you.**
+> **Know what your change can break. Run only what you can justify.**
 
-[![CI](https://github.com/ateeqdesktop-dot/impactweave/actions/workflows/ci.yml/badge.svg)](https://github.com/ateeqdesktop-dot/impactweave/actions/workflows/ci.yml) [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB)](https://www.python.org/) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+ImpactWeave is a **local-first, deterministic change-impact and safe test-selection engine** for polyglot repositories. It turns a Git diff and a versioned test ownership contract into an explainable plan: a justified subset, a conservative full-suite fallback, or an explicit review state.
 
-ImpactWeave Nexus is a **local-first, deterministic change-impact decision engine for AI-enabled distributed systems**. It turns a contract or repository change into an explainable impact graph, attaches the evidence available for each boundary, and emits a stable artifact that humans and CI can review.
+It does not execute test commands, call an LLM, upload source code, require a database, or depend on a hosted control plane. It produces portable JSON, Markdown, SARIF, and CI-friendly exit semantics that a downstream runner can consume.
 
-It answers a question that ordinary schema validators, observability dashboards, and runtime policy engines answer only partially:
+## Why it exists
 
-> **Which agent, tool, data, or service boundary can change because of this diff, what evidence supports that conclusion, and where must a human review uncertainty?**
+CI systems often have to choose between running an expensive full suite on every change or skipping tests with assumptions that are difficult to review. Existing approaches can be tied to a monorepo graph, historical coverage service, or opaque prediction. ImpactWeave makes the decision contract explicit and fail-safe: unknown or high-risk changes widen the plan instead of silently narrowing it.
 
-## Why this project exists
+## What is implemented in 0.3
 
-AI-enabled systems are connected by more than imports. A small event or API change can alter a tool contract, a retrieval path, a policy boundary, an agent fixture, or a downstream worker. ImpactWeave Nexus makes those relationships explicit without pretending that an impact score is proof of safety.
+| Capability | Status |
+|---|---|
+| Git `base...head` diff or explicit changed paths | Implemented |
+| Relative-path normalization and traversal rejection | Implemented |
+| Declarative test targets with argv arrays, path globs, tags, and estimates | Implemented |
+| Always-run, ignored-paths, tracked-paths, and max-subset policy | Implemented |
+| Fresh optional observations without raw test output | Implemented |
+| `safe_subset`, `full_suite`, and `review` verdict semantics | Implemented |
+| Per-test reason, matched paths, evidence sources, and artifact digest | Implemented |
+| JSON, Markdown, SARIF 2.1.0, and CLI | Implemented |
+| Existing Nexus contract-impact engine | Preserved |
+| Coverage/OpenAPI/AsyncAPI/JSON Schema adapters | Roadmap |
+| Remote service, model ranking, or automatic command execution | Out of scope for core |
 
-The core is intentionally offline and framework-neutral. It does not call an LLM, execute repository code, contact a hosted service, or require a database. Every finding includes a severity, coverage state, confidence when evidence is fresh, and a graph path that a reviewer can inspect.
-
-ImpactWeave Nexus is **not** another observability backend, evaluator, runtime governance engine, sandbox, schema registry, generic dependency graph, or hosted control plane. Observability tells you what happened. Runtime governance controls what may happen. Replay tools protect known failures. Nexus helps decide what deserves attention **before merge**.
-
-## Quickstart
+## Quick start
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 
-# Validate without producing an impact decision
-impactweave validate fixtures/nexus.yaml
+# Plan from explicit paths; this command never runs the emitted tests.
+impactweave test-plan fixtures/test-plan.yaml \
+  --changed src/checkout/cart.py \
+  --format markdown
 
-# Produce a human-readable report; this fixture intentionally returns exit 1
-impactweave nexus fixtures/nexus.yaml --format markdown --output impact.md
-
-# Produce stable machine output for snapshots and artifacts
-impactweave nexus fixtures/nexus.yaml --format json --output impact.json
-
-# Produce SARIF for GitHub Code Scanning-compatible ingestion
-impactweave nexus fixtures/nexus.yaml --format sarif --output impact.sarif
+# Plan directly from a Git range.
+impactweave test-plan fixtures/test-plan.yaml \
+  --repo . --base HEAD~1 --head HEAD \
+  --format sarif --output impactweave.sarif
 ```
 
-The legacy `plan` command remains supported, so existing ImpactWeave users can adopt Nexus incrementally.
+The checked-in fixture demonstrates a safe subset for a checkout change, an always-run lint target, and full-suite fallback for a lockfile or unmapped path. The test planner returns exit code `1` only for `review`; `safe_subset` and `full_suite` are valid decisions and return `0`.
 
-## What the engine produces
+## Test ownership contract
 
-| Output | Purpose |
-|---|---|
-| Explainable graph paths | Shows the producer → contract → consumer route used by a finding. |
-| Evidence coverage | Distinguishes `observed`, `declared`, `stale`, and `unknown`; missing evidence is reviewable uncertainty. |
-| Impact score | Provides a bounded triage signal, never a claim of safety. |
-| Stable artifact digest | Identifies the canonical report while redacting generation time for reproducible CI snapshots. |
-| Markdown | Gives reviewers a compact contract and consumer-impact table. |
-| JSON | Supports automation, snapshots, and downstream integrations. |
-| SARIF | Surfaces breaking findings in GitHub security and code-scanning workflows. |
-
-## Manifest example
+A target uses an argv array rather than a shell string. This prevents ImpactWeave from introducing shell interpolation and makes the plan portable to another runner.
 
 ```yaml
-strict: true
-max_hops: 6
-stale_after_days: 30
-contracts:
-  - name: orders.created
-    version: "1"
-    kind: event-json
-    fields:
-      - {path: /id, type: string, required: true}
-      - {path: /total, type: number, required: true}
-proposed:
-  - name: orders.created
-    version: "2"
-    kind: event-json
-    fields:
-      - {path: /id, type: string, required: true}
-      - {path: /total, type: integer, required: true}
-      - {path: /currency, type: string, required: true}
-nodes:
-  - {id: checkout, kind: component}
-  - {id: contract:orders.created, kind: contract}
-  - {id: billing, kind: component}
-graph_edges:
-  - {source: checkout, target: contract:orders.created, kind: produces}
-  - {source: contract:orders.created, target: billing, kind: consumes}
-edges:
-  - {producer: checkout, consumer: billing, contract: orders.created}
-evidence:
-  - producer: checkout
-    consumer: billing
-    contract: orders.created
-    confidence: 0.98
-    source: contract-test
-    observed_at: "2026-08-22T12:00:00Z"
+tests:
+  - id: unit.checkout
+    command: [pytest, tests/checkout, -q]
+    paths: [src/checkout/**, tests/checkout/**]
+    tags: [unit, fast]
+    estimated_seconds: 45
+  - id: contract.api
+    command: [pytest, tests/contracts, -q]
+    paths: [contracts/**, schemas/**, src/api/**]
+  - id: lint
+    command: [ruff, check, .]
+    always: true
+
+test_policy:
+  tracked_paths: [pyproject.toml, uv.lock, .github/workflows/**]
+  ignored_paths: [docs/**, "**/*.md"]
+  fallback_on_unknown: true
+  max_selected: 20
+  stale_after_days: 30
 ```
 
-Graph nodes support `component`, `contract`, `tool`, `policy`, `dataset`, `deployment`, and `fixture`. Graph edges support `produces`, `consumes`, `calls`, `retrieves`, `governed_by`, `deploys`, and `derives`. The older `edges` and `evidence` fields are retained for a low-friction migration path.
+## Decision semantics
+
+`safe_subset` means every effective changed path is justified by a target mapping or a fresh observation, and the policy permits the resulting subset. It is not a proof that the selected tests cover every semantic consequence of the change.
+
+`full_suite` means the planner selected every declared target because a tracked path changed, a path was unmapped, the subset exceeded the policy limit, or the manifest contained no targets. `review` is reserved for a caller that disables fallback and leaves no target justifiable. The engine never silently treats uncertainty as a skip.
 
 ## GitHub Actions
 
 ```yaml
-name: impactweave
+name: ImpactWeave test plan
+
 on: [pull_request]
+
+permissions:
+  contents: read
+
 jobs:
-  impact:
+  plan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install .
-      - name: Analyze change impact
-        run: impactweave nexus fixtures/nexus.yaml --format sarif --output impactweave.sarif
-      - name: Upload impact findings
-        uses: github/codeql-action/upload-sarif@v3
+      - run: python -m pip install .
+      - name: Build conservative test plan
+        run: >-
+          impactweave test-plan fixtures/test-plan.yaml
+          --base "${{ github.event.pull_request.base.sha }}"
+          --head "${{ github.event.pull_request.head.sha }}"
+          --format sarif --output impactweave.sarif
+      - name: Upload plan findings
         if: always()
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: impactweave.sarif
 ```
 
-Pin released versions rather than a moving branch in production workflows. A future official composite action will be added only after the manifest and artifact contracts stabilize.
+ImpactWeave reports the plan; the caller owns execution, sandboxing, timeouts, secrets, and sharding. Pin released versions in production workflows rather than tracking a moving branch.
 
-## Architecture
+## Existing Nexus engine
 
-The engine is a small, pure pipeline: validated canonical models feed the contract diff engine and a typed adjacency graph; sorted bounded traversal resolves paths; evidence coverage and policy rules produce findings; deterministic reporters emit JSON, Markdown, or SARIF. See [`docs/nexus-architecture.md`](docs/nexus-architecture.md).
+The original contract-impact engine remains available:
+
+```bash
+impactweave validate fixtures/nexus.yaml
+impactweave nexus fixtures/nexus.yaml --format markdown --output impact.md
+impactweave nexus fixtures/nexus.yaml --format sarif --output impact.sarif
+```
+
+Nexus answers which consumers can be affected by a contract change. The test planner answers which test commands deserve execution for a code change. They share the same versioned manifest so teams can adopt either surface incrementally.
+
+## Architecture and security
+
+```text
+explicit paths or Git diff
+          -> normalize and reject unsafe paths
+          -> apply ignored-path policy
+          -> match test ownership and fresh observations
+          -> detect tracked or unmapped paths
+          -> safe subset or full-suite fallback
+          -> canonical digest -> JSON / Markdown / SARIF
+```
+
+The core is pure after input loading. YAML uses safe parsing and bounded input sizes. Git is called only as `git diff --name-only` with argv and a timeout. Absolute paths, NUL bytes, traversal, and option-like Git refs are rejected. Test commands remain data and are never executed. Reports contain no environment values or test output.
+
+Read [`docs/test-selection.md`](docs/test-selection.md) for the product contract and [`docs/architecture-0.3.md`](docs/architecture-0.3.md) for component boundaries, error flow, performance, scalability, testing, and roadmap details. Read [`SECURITY.md`](SECURITY.md) before reporting a vulnerability.
 
 ## Development
 
 ```bash
-pytest
+pip install -e '.[dev]'
 ruff check .
 mypy src
+pytest
 python -m build
 ```
 
-The project targets Python 3.10+. Tests cover contract semantics, strict and permissive decisions, timezone validation, graph references, graph paths, stale evidence, deterministic digests, CLI behavior, and SARIF serialization. The core does not execute target repository code and uses safe YAML loading with input limits.
+The suite includes 28 tests with a coverage threshold above 90%, temporary Git integration, deterministic artifact checks, policy fallback cases, and report serialization. Every new rule should add a positive and negative fixture plus a focused regression test.
 
-## Product roadmap
+## Roadmap
 
-The MVP in this repository covers the canonical model, contract impact engine, typed graph paths, coverage states, deterministic artifact identity, Markdown/JSON/SARIF reporters, CLI, fixtures, and CI-quality gates. The next extensions are read-only OpenAPI, AsyncAPI, JSON Schema, SQL migration, TraceForge, Runproof, and OTel adapters. A hosted control plane is intentionally deferred until local artifacts and community workflows prove stable.
-
-## Contributing and security
-
-Contributions should add a focused fixture and a regression test for every new semantic rule. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md), and [`SECURITY.md`](SECURITY.md). Security reports should not be opened as public issues.
+The next release will prioritize coverage.py and LCOV adapters, an explicit `--explain` mode, richer GitHub Checks summaries, and OpenAPI/AsyncAPI/JSON Schema impact adapters. A later release may add an indexed matcher and JUnit history import. Remote learning, hosted analytics, and automatic command execution remain outside the trust-critical core until a safe, reviewable contract exists.
 
 ## License
 
-ImpactWeave Nexus is released under the [Apache License 2.0](LICENSE).
+Apache-2.0. See [`LICENSE`](LICENSE).

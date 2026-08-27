@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a deterministic adapter, policy, reporter, or developer workflow.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What real workflow is blocked or unnecessarily expensive today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed contract
+      description: Describe inputs, outputs, verdict semantics, and compatibility impact.
+    validations:
+      required: true
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Project principles
+      options:
+        - label: The proposal can remain deterministic and explainable.
+          required: true
+        - label: The proposal does not require sending source data or secrets to a hosted service.
+          required: true
+        - label: I can provide positive and negative fixtures.
+          required: true

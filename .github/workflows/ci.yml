@@ -16,6 +16,8 @@ jobs:
         python-version: ['3.10', '3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -34,6 +36,11 @@ jobs:
           impactweave validate fixtures/nexus.yaml
           impactweave nexus fixtures/nexus.yaml --format sarif --output impactweave.sarif || test $? -eq 1
           test -s impactweave.sarif
+      - name: Test planner fixture
+        if: matrix.python-version == '3.12'
+        run: |
+          impactweave test-plan fixtures/test-plan.yaml --changed src/checkout/cart.py --format sarif --output test-plan.sarif
+          test -s test-plan.sarif
       - name: Build
         if: matrix.python-version == '3.12'
         run: python -m build

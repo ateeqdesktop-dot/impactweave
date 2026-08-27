@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from .models import ContractSnapshot, Edge, Evidence, GraphEdge, GraphNode
+from .models import ContractSnapshot, Edge, Evidence, GraphEdge, GraphNode, TestObservation, TestPolicy, TestTarget
 
 MAX_BYTES = 2_000_000
 MAX_JSONL_LINE = 256_000
@@ -24,6 +24,9 @@ class ProjectManifest(BaseModel):
     strict: bool = True
     max_hops: int = Field(default=8, ge=1, le=32)
     stale_after_days: int = Field(default=30, ge=1, le=3650)
+    tests: list[TestTarget] = Field(default_factory=list, max_length=100_000)
+    test_observations: list[TestObservation] = Field(default_factory=list, max_length=100_000)
+    test_policy: TestPolicy = Field(default_factory=TestPolicy)
 
     @model_validator(mode="after")
     def validate_graph_references(self) -> ProjectManifest:
@@ -33,6 +36,12 @@ class ProjectManifest(BaseModel):
         )
         if missing:
             raise ValueError(f"graph edges reference unknown nodes: {', '.join(missing)}")
+        test_ids = [item.id for item in self.tests]
+        if len(test_ids) != len(set(test_ids)):
+            raise ValueError("test target ids must be unique")
+        unknown_tests = sorted({item.test_id for item in self.test_observations if item.test_id not in set(test_ids)})
+        if unknown_tests:
+            raise ValueError(f"test observations reference unknown tests: {', '.join(unknown_tests)}")
         return self
 
     @property

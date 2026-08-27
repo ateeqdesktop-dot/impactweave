@@ -4,17 +4,32 @@ build-backend = "hatchling.build"
 
 [project]
 name = "impactweave"
-version = "0.2.0"
-description = "Explainable, deterministic change-impact decisions for AI-enabled systems"
+version = "0.3.0"
+description = "Local-first, deterministic change-impact analysis and safe test selection"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "Manus AI"}]
+keywords = ["ci", "developer-tools", "test-selection", "change-impact", "sarif", "reproducibility"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Testing",
+]
+
 dependencies = [
   "pydantic>=2.7,<3",
   "pyyaml>=6.0,<7",
   "typer>=0.12,<1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ateeqdesktop-dot/impactweave"
+Repository = "https://github.com/ateeqdesktop-dot/impactweave"
+Issues = "https://github.com/ateeqdesktop-dot/impactweave/issues"
 
 [project.optional-dependencies]
 dev = [

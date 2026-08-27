@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ContractKind(str, Enum):
@@ -183,3 +183,79 @@ class ImpactReport(BaseModel):
         if value.tzinfo is None:
             raise ValueError("generated_at must include a timezone")
         return value.astimezone(timezone.utc)
+
+
+class TestTarget(BaseModel):
+    """A declarative test command and the paths it is known to exercise."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.:/@-]+$")
+    command: list[str] = Field(min_length=1, max_length=64)
+    paths: list[str] = Field(default_factory=list, max_length=256)
+    tags: list[str] = Field(default_factory=list, max_length=32)
+    always: bool = False
+    estimated_seconds: int = Field(default=0, ge=0, le=86_400)
+
+    @model_validator(mode="after")
+    def require_mapping(self) -> TestTarget:
+        if not self.always and not self.paths:
+            raise ValueError("a non-always test target must declare at least one path glob")
+        return self
+
+
+class TestObservation(BaseModel):
+    """Optional, bounded evidence connecting a test to paths it exercised."""
+
+    model_config = ConfigDict(extra="forbid")
+    test_id: str = Field(min_length=1, max_length=160)
+    paths: list[str] = Field(min_length=1, max_length=512)
+    source: str = Field(min_length=1, max_length=128)
+    observed_at: datetime
+
+    @field_validator("observed_at")
+    @classmethod
+    def observation_timezone_required(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("observed_at must include a timezone")
+        return value.astimezone(timezone.utc)
+
+
+class TestPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tracked_paths: list[str] = Field(default_factory=list, max_length=256)
+    ignored_paths: list[str] = Field(default_factory=list, max_length=256)
+    fallback_on_unknown: bool = True
+    max_selected: int = Field(default=512, ge=1, le=100_000)
+    stale_after_days: int = Field(default=30, ge=1, le=3650)
+
+
+class TestDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    test_id: str
+    selected: bool
+    reason: str
+    matched_paths: list[str] = Field(default_factory=list, max_length=512)
+    command: list[str] = Field(default_factory=list, max_length=64)
+    tags: list[str] = Field(default_factory=list, max_length=32)
+    estimated_seconds: int = Field(default=0, ge=0)
+    evidence_sources: list[str] = Field(default_factory=list, max_length=32)
+
+
+class TestPlanVerdict(str, Enum):
+    SAFE_SUBSET = "safe_subset"
+    FULL_SUITE = "full_suite"
+    REVIEW = "review"
+
+
+class TestPlanReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: str = "1"
+    verdict: TestPlanVerdict
+    changed_paths: list[str] = Field(default_factory=list, max_length=100_000)
+    decisions: list[TestDecision] = Field(default_factory=list, max_length=100_000)
+    selected_tests: list[str] = Field(default_factory=list, max_length=100_000)
+    skipped_tests: list[str] = Field(default_factory=list, max_length=100_000)
+    unknown_paths: list[str] = Field(default_factory=list, max_length=100_000)
+    fallback_reasons: list[str] = Field(default_factory=list, max_length=128)
+    summary: dict[str, int | bool]
+    artifact_digest: str = ""
